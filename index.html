@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>오늘 공부</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <main class="shell">
+    <section id="authView" class="card auth-card">
+      <p class="eyebrow">MY STUDY</p>
+      <h1>오늘 공부</h1>
+      <p class="muted">PC와 휴대폰에서 같은 계정으로 이어서 학습합니다.</p>
+      <form id="authForm">
+        <label for="email">이메일</label>
+        <input id="email" type="email" placeholder="you@example.com" required />
+        <button class="primary" type="submit">로그인 링크 받기</button>
+      </form>
+      <p id="authMessage" class="small muted"></p>
+    </section>
+
+    <section id="studyView" class="hidden">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">TODAY</p>
+          <h1 id="dayLabel">Day 1</h1>
+        </div>
+        <div class="top-actions">
+          <button id="sourcesBtn" class="ghost">민법 자료</button>
+          <button id="logoutBtn" class="ghost">로그아웃</button>
+        </div>
+      </header>
+
+      <div class="progress-wrap">
+        <div class="progress-row">
+          <span id="stepLabel">TOEIC Part 6</span>
+          <span id="progressText">1 / 6</span>
+        </div>
+        <div class="progress-track"><div id="progressBar" class="progress-bar"></div></div>
+      </div>
+
+      <section id="quizCard" class="card quiz-card">
+        <div id="questionMeta" class="meta"></div>
+        <div id="passage" class="passage hidden"></div>
+        <h2 id="questionText"></h2>
+        <div id="choices" class="choices"></div>
+        <div id="feedback" class="feedback hidden"></div>
+        <button id="nextBtn" class="primary hidden">다음</button>
+      </section>
+
+      <section id="doneCard" class="card done-card hidden">
+        <p class="eyebrow">COMPLETE</p>
+        <h2>오늘 공부 완료</h2>
+        <p id="scoreSummary" class="muted"></p>
+        <p class="small">다음 접속 때 Day가 1 증가합니다.</p>
+      </section>
+
+      <section id="sourcesView" class="hidden">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">REFERENCE LIBRARY</p>
+            <h2>민법 참고자료</h2>
+            <p class="muted">헷갈린 내용, 판례 메모, 오답 정리를 계속 추가해두세요. PC/폰에서 동기화됩니다.</p>
+          </div>
+          <button id="backToStudyBtn" class="ghost">공부로 돌아가기</button>
+        </div>
+
+        <section class="card source-form-card">
+          <label for="sourceTitle">자료 제목</label>
+          <input id="sourceTitle" type="text" placeholder="예: 유치권 헷갈린 판례 정리" />
+
+          <label for="sourceTags">태그</label>
+          <input id="sourceTags" type="text" placeholder="예: 유치권, 점유, 경매" />
+
+          <label for="sourceText">내용</label>
+          <textarea id="sourceText" rows="12" placeholder="여기에 메모나 정리 내용을 붙여넣으세요."></textarea>
+
+          <div class="source-actions">
+            <label class="file-btn">
+              TXT/MD 파일 불러오기
+              <input id="sourceFile" type="file" accept=".txt,.md,text/plain,text/markdown" hidden />
+            </label>
+            <button id="saveSourceBtn" class="primary" type="button">자료 저장</button>
+          </div>
+          <p id="sourceMessage" class="small muted"></p>
+        </section>
+
+        <section class="card">
+          <div class="library-head">
+            <h3>저장된 자료</h3>
+            <button id="exportSourcesBtn" class="ghost" type="button">전체 TXT 내보내기</button>
+          </div>
+          <div id="sourceList" class="source-list"></div>
+        </section>
+      </section>
+    </section>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="./config.js"></script>
+  <script src="./questions.js"></script>
+  <script src="./app.js"></script>
+</body>
+</html>
