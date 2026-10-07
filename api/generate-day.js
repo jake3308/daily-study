@@ -1,6 +1,6 @@
 const OPENAI_MODEL = 'gpt-5.6-sol';
-const PROMPT_VERSION = 'v7-sol-high-budget-guard';
-const MAX_OUTPUT_TOKENS = 8500;
+const PROMPT_VERSION = 'v7.1-sol-high-output-fix';
+const MAX_OUTPUT_TOKENS = 16000;
 const MAX_SOURCE_CHARS = 14000;
 const ACTIVE_TRACK = process.env.STUDY_TRACK === 'patent_focus' ? 'patent_focus' : 'current';
 
@@ -252,6 +252,7 @@ function validateAndNormalize(questions, dayNumber) {
 }
 
 function outputText(resp) {
+  if (typeof resp?.output_text === 'string' && resp.output_text.trim()) return resp.output_text.trim();
   const parts = [];
   for (const item of resp?.output || []) {
     if (item?.type !== 'message') continue;
@@ -383,9 +384,25 @@ ${ACTIVE_TRACK === 'current' ? '- TOEIC Part 6 지문은 140~260 words, Part 7 �
     const msg = data?.error?.message || `OpenAI API ${r.status}`;
     throw new Error(msg);
   }
+  if (data?.status === 'incomplete') {
+    const reason = data?.incomplete_details?.reason || 'unknown';
+    const used = data?.usage?.output_tokens ?? '?';
+    const reasoningUsed = data?.usage?.output_tokens_details?.reasoning_tokens ?? '?';
+    throw new Error(`OpenAI 응답이 완성되기 전에 중단되었습니다 (${reason}). 출력 ${used} tokens / reasoning ${reasoningUsed} tokens. 다시 시도하지 말고 generate-day.js의 출력 한도를 확인하세요.`);
+  }
+
   const text = outputText(data);
-  if (!text) throw new Error('OpenAI 응답에 문제 데이터가 없습니다.');
-  return JSON.parse(text);
+  if (!text) {
+    const status = data?.status || 'unknown';
+    const types = Array.isArray(data?.output) ? data.output.map(x => x?.type).filter(Boolean).join(',') : 'none';
+    throw new Error(`OpenAI 응답에 문제 데이터가 없습니다. status=${status}, output=${types || 'none'}`);
+  }
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error('OpenAI가 문제를 생성했지만 JSON 해석에 실패했습니다.');
+  }
 }
 
 module.exports = async (req, res) => {
