@@ -1,14 +1,22 @@
-UI 개선 패치 v8
+Study Site v8.2 — fast/stable generation patch
 
-교체할 파일:
-- index.html
-- styles.css
-- app.js  (화면의 모델 표기만 "Sol · High"로 간소화)
+What changed
+- Keeps GPT-5.6 Sol.
+- TOEIC generation: Sol + Medium reasoning.
+- Civil law / Physics / Chemistry / Biology: Sol + High reasoning.
+- TOEIC and exam-core are generated in parallel to reduce waiting time.
+- TOEIC answers are now generated as A/B/C/D labels, then safely converted to numeric indices.
+  This removes the 'TOEIC Part 6 정답 인덱스가 잘못되었습니다' failure mode.
+- TOEIC passages are output once per part instead of copied into every question, reducing tokens.
+- Civil-law notes are NOT sent to the TOEIC request, reducing latency and token usage.
+- No automatic retries. A retry only happens when you press the retry button.
 
-건드리지 말 것:
-- config.js
-- api/generate-day.js (v7.1 출력 패치 그대로 유지)
-- vercel.json
-- Supabase SQL
+Install
+1. Replace only: api/generate-day.js
+2. Commit to GitHub.
+3. Wait for Vercel deployment to be Ready.
+4. Hard-refresh the study site (Ctrl+F5).
 
-GitHub 저장소 루트에서 위 3개 파일만 교체하고 Commit 하면 Vercel이 자동 재배포합니다.
+No Supabase SQL changes.
+No Vercel environment-variable changes.
+No frontend changes.
