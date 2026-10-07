@@ -197,7 +197,7 @@ async function renderDay() {
   stepLabel.textContent = '오늘 문제 준비';
   progressText.textContent = '—';
   progressBar.style.width = '0%';
-  modelBadge.textContent = 'GPT-5.6 Sol · High reasoning';
+  modelBadge.textContent = 'Sol · High';
 
   try {
     hideStudyCards();

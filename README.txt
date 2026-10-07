@@ -1,13 +1,14 @@
-v7.1 출력한도 수정 패치
+UI 개선 패치 v8
 
-1) GitHub daily-study 저장소에서 api/generate-day.js만 이 파일로 교체합니다.
-2) Commit changes 합니다.
-3) Vercel이 자동 재배포되면 사이트를 새로고침합니다.
+교체할 파일:
+- index.html
+- styles.css
+- app.js  (화면의 모델 표기만 "Sol · High"로 간소화)
 
-변경사항:
-- GPT-5.6 Sol + High reasoning 그대로 유지
-- max_output_tokens 8,500 -> 16,000
-- 토큰 한도 때문에 응답이 incomplete인 경우 원인을 화면에 구체적으로 표시
-- 자동 재시도 없음(비용 가드 유지)
+건드리지 말 것:
+- config.js
+- api/generate-day.js (v7.1 출력 패치 그대로 유지)
+- vercel.json
+- Supabase SQL
 
-중요: max_output_tokens는 '무조건 쓰는 토큰 수'가 아니라 상한입니다.
+GitHub 저장소 루트에서 위 3개 파일만 교체하고 Commit 하면 Vercel이 자동 재배포합니다.

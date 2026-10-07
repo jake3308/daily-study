@@ -3,41 +3,43 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="light" />
   <title>오늘 공부</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
   <main class="shell">
-    <section id="authView" class="card auth-card">
-      <p class="eyebrow">MY STUDY</p>
+    <section id="authView" class="auth-panel">
+      <div class="auth-brand">DAILY STUDY</div>
       <h1>오늘 공부</h1>
-      <p class="muted">PC와 휴대폰에서 같은 계정으로 이어서 학습합니다.</p>
-      <form id="authForm">
-        <label for="email">이메일</label>
-        <input id="email" type="email" placeholder="you@example.com" autocomplete="email" required />
-
-        <label for="password">비밀번호</label>
-        <input id="password" type="password" placeholder="8자 이상" autocomplete="current-password" minlength="8" required />
-
+      <p class="muted auth-copy">한 번 로그인하면 PC와 휴대폰에서 같은 진도로 이어집니다.</p>
+      <form id="authForm" class="auth-form">
+        <div class="field">
+          <label class="field-label" for="email">이메일</label>
+          <input id="email" type="email" placeholder="you@example.com" autocomplete="email" required />
+        </div>
+        <div class="field">
+          <label class="field-label" for="password">비밀번호</label>
+          <input id="password" type="password" placeholder="8자 이상" autocomplete="current-password" minlength="8" required />
+        </div>
         <button class="primary" type="submit">로그인</button>
-        <button id="signupBtn" class="ghost" type="button">처음 사용이면 계정 만들기</button>
+        <button id="signupBtn" class="secondary full" type="button">처음 사용이면 계정 만들기</button>
       </form>
-      <p id="authMessage" class="small muted"></p>
+      <p id="authMessage" class="form-message muted"></p>
     </section>
 
     <section id="studyView" class="hidden">
       <header class="topbar">
-        <div>
-          <p class="eyebrow">TODAY</p>
-          <h1 id="dayLabel">Day 1</h1>
-          <div id="modelBadge" class="model-badge">GPT-5.6 Sol · High reasoning</div>
+        <div class="day-block">
+          <div class="section-kicker">TODAY</div>
+          <div class="day-row">
+            <h1 id="dayLabel">Day 1</h1>
+            <div id="modelBadge" class="model-badge">Sol · High</div>
+          </div>
         </div>
         <div class="top-actions">
-          <button id="sourcesBtn" class="ghost">민법 자료</button>
-          <button id="logoutBtn" class="ghost">로그아웃</button>
+          <button id="sourcesBtn" class="secondary">민법 자료</button>
+          <button id="logoutBtn" class="text-button">로그아웃</button>
         </div>
       </header>
 
@@ -49,66 +51,83 @@
         <div class="progress-track"><div id="progressBar" class="progress-bar"></div></div>
       </div>
 
-      <section id="loadingCard" class="card status-card hidden">
-        <p class="eyebrow">PREPARING</p>
+      <section id="loadingCard" class="panel status-card hidden">
+        <div class="status-dot"></div>
         <h2>오늘 문제 준비 중</h2>
         <p id="loadingMessage" class="muted">오늘 문제를 불러오는 중...</p>
-        <button id="retryGenerateBtn" class="primary hidden" type="button">다시 시도</button>
+        <button id="retryGenerateBtn" class="primary compact hidden" type="button">다시 시도</button>
       </section>
 
-      <section id="quizCard" class="card quiz-card hidden">
-        <div id="questionMeta" class="meta"></div>
+      <section id="quizCard" class="panel quiz-card hidden">
+        <div id="questionMeta" class="question-meta"></div>
         <div id="passage" class="passage hidden"></div>
-        <h2 id="questionText"></h2>
+        <h2 id="questionText" class="question-text"></h2>
         <div id="choices" class="choices"></div>
         <div id="feedback" class="feedback hidden"></div>
         <div class="answer-actions">
-          <button id="unsureBtn" class="ghost hidden" type="button">맞혔지만 헷갈림</button>
+          <button id="unsureBtn" class="secondary hidden" type="button">맞혔지만 헷갈림</button>
           <button id="nextBtn" class="primary hidden" type="button">다음</button>
         </div>
       </section>
 
-      <section id="doneCard" class="card done-card hidden">
-        <p class="eyebrow">COMPLETE</p>
+      <section id="doneCard" class="panel done-card hidden">
+        <div class="done-mark">✓</div>
         <h2>오늘 공부 완료</h2>
         <p id="scoreSummary" class="muted"></p>
-        <p class="small">이 Day를 완료해야 다음 Day가 새로 생성됩니다. 쉬는 날은 Day가 증가하지 않습니다.</p>
+        <p class="helper-text">이 Day를 완료해야 다음 Day가 생성됩니다. 쉬는 날은 Day가 증가하지 않습니다.</p>
       </section>
 
-      <section id="sourcesView" class="hidden">
-        <div class="section-head">
+      <section id="sourcesView" class="hidden sources-view">
+        <div class="sources-header">
           <div>
-            <p class="eyebrow">REFERENCE LIBRARY</p>
+            <div class="section-kicker">CIVIL LAW NOTES</div>
             <h2>민법 참고자료</h2>
-            <p class="muted">헷갈린 내용, 판례 메모, 오답 정리를 계속 추가하세요. 다음 새 Day의 민법 문제 생성부터 반영됩니다.</p>
+            <p class="muted">오답·판례·헷갈린 포인트를 저장하면 다음 새 Day의 민법 출제에 반영됩니다.</p>
           </div>
-          <button id="backToStudyBtn" class="ghost">공부로 돌아가기</button>
+          <button id="backToStudyBtn" class="secondary">공부로 돌아가기</button>
         </div>
 
-        <section class="card source-form-card">
-          <label for="sourceTitle">자료 제목</label>
-          <input id="sourceTitle" type="text" placeholder="예: 유치권 헷갈린 판례 정리" />
-
-          <label for="sourceTags">태그</label>
-          <input id="sourceTags" type="text" placeholder="예: 유치권, 점유, 경매" />
-
-          <label for="sourceText">내용</label>
-          <textarea id="sourceText" rows="12" placeholder="여기에 메모나 정리 내용을 붙여넣으세요."></textarea>
-
-          <div class="source-actions">
+        <section class="panel source-form-card">
+          <div class="source-form-head">
+            <div>
+              <h3>자료 추가</h3>
+              <p class="muted small">짧은 메모부터 긴 정리까지 그대로 넣어도 됩니다.</p>
+            </div>
             <label class="file-btn">
-              TXT/MD 파일 불러오기
+              TXT / MD 불러오기
               <input id="sourceFile" type="file" accept=".txt,.md,text/plain,text/markdown" hidden />
             </label>
-            <button id="saveSourceBtn" class="primary" type="button">자료 저장</button>
           </div>
-          <p id="sourceMessage" class="small muted"></p>
+
+          <div class="source-fields-row">
+            <div class="field">
+              <label class="field-label" for="sourceTitle">자료 제목</label>
+              <input id="sourceTitle" type="text" placeholder="예: 유치권 판례 정리" />
+            </div>
+            <div class="field">
+              <label class="field-label" for="sourceTags">태그</label>
+              <input id="sourceTags" type="text" placeholder="예: 유치권, 점유, 경매" />
+            </div>
+          </div>
+
+          <div class="field source-content-field">
+            <label class="field-label" for="sourceText">내용</label>
+            <textarea id="sourceText" rows="14" placeholder="메모나 정리 내용을 붙여넣으세요."></textarea>
+          </div>
+
+          <div class="source-footer">
+            <p id="sourceMessage" class="form-message muted"></p>
+            <button id="saveSourceBtn" class="primary save-source" type="button">자료 저장</button>
+          </div>
         </section>
 
-        <section class="card">
+        <section class="panel library-card">
           <div class="library-head">
-            <h3>저장된 자료</h3>
-            <button id="exportSourcesBtn" class="ghost" type="button">전체 TXT 내보내기</button>
+            <div>
+              <h3>저장된 자료</h3>
+              <p class="muted small">최근 수정한 자료부터 표시됩니다.</p>
+            </div>
+            <button id="exportSourcesBtn" class="secondary" type="button">전체 TXT 내보내기</button>
           </div>
           <div id="sourceList" class="source-list"></div>
         </section>
