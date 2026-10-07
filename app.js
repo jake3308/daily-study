@@ -160,12 +160,25 @@ async function fetchDailyQuestions(dayNumber) {
   return null;
 }
 
-async function generateDailyQuestions(dayNumber) {
+const TOTAL_QUESTIONS = 10;
+const INDEX_STAGE = [
+  'TOEIC Part 6','TOEIC Part 6','TOEIC Part 6','TOEIC Part 6',
+  'TOEIC Part 7','TOEIC Part 7',
+  '민법','물리','화학','생물'
+];
+
+function pendingStageName() {
+  return INDEX_STAGE[Math.min(progress?.current_index || 0, INDEX_STAGE.length - 1)] || '다음 문제';
+}
+
+async function generateNextBlock(dayNumber) {
   loadingCard.classList.remove('hidden');
   quizCard.classList.add('hidden');
   doneCard.classList.add('hidden');
   retryGenerateBtn.classList.add('hidden');
-  loadingMessage.textContent = 'GPT-5.6 Sol이 오답 기록과 민법 참고자료를 읽고 오늘 문제를 만들고 있습니다. 첫 생성은 조금 걸릴 수 있어요.';
+
+  const stage = pendingStageName();
+  loadingMessage.textContent = `${stage} 문제를 준비 중입니다…`;
 
   const token = session?.access_token;
   if (!token) throw new Error('로그인 세션이 없습니다. 다시 로그인해주세요.');
@@ -178,15 +191,19 @@ async function generateDailyQuestions(dayNumber) {
     },
     body: JSON.stringify({ dayNumber }),
   });
+
   const data = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(data.error || `문제 생성 실패 (${r.status})`);
   return data;
 }
 
-async function loadOrGenerateDay(dayNumber) {
+async function loadOrGenerateForCurrentIndex(dayNumber) {
   const cached = await fetchDailyQuestions(dayNumber);
-  if (cached) return cached;
-  return generateDailyQuestions(dayNumber);
+  if (cached?.questions?.length > progress.current_index) return cached;
+
+  // 현재 위치에 필요한 묶음만 생성한다.
+  // Part 6(4문제) -> Part 7(2문제) -> 민법 -> 물리 -> 화학 -> 생물 순서.
+  return generateNextBlock(dayNumber);
 }
 
 async function renderDay() {
@@ -194,32 +211,36 @@ async function renderDay() {
   sourcesView.classList.add('hidden');
   document.querySelector('.progress-wrap').classList.remove('hidden');
   dayLabel.textContent = `Day ${progress.current_day}`;
-  stepLabel.textContent = '오늘 문제 준비';
-  progressText.textContent = '—';
-  progressBar.style.width = '0%';
-  modelBadge.textContent = 'Sol · High';
+  stepLabel.textContent = progress.current_index >= TOTAL_QUESTIONS ? '완료' : pendingStageName();
+  progressText.textContent = `${Math.min(progress.current_index + 1, TOTAL_QUESTIONS)} / ${TOTAL_QUESTIONS}`;
+  progressBar.style.width = `${Math.min(progress.current_index, TOTAL_QUESTIONS) / TOTAL_QUESTIONS * 100}%`;
+  modelBadge.textContent = 'Sol';
+
+  if (progress.current_index >= TOTAL_QUESTIONS) {
+    currentQuestions = (await fetchDailyQuestions(progress.current_day))?.questions || [];
+    renderDone();
+    return;
+  }
 
   try {
     hideStudyCards();
     loadingCard.classList.remove('hidden');
-    loadingMessage.textContent = '오늘 문제를 불러오는 중...';
+    loadingMessage.textContent = '저장된 문제를 확인하는 중…';
     retryGenerateBtn.classList.add('hidden');
 
-    const payload = await loadOrGenerateDay(progress.current_day);
+    const payload = await loadOrGenerateForCurrentIndex(progress.current_day);
     currentQuestions = payload.questions || [];
     currentGenerationMeta = payload;
     loadingCard.classList.add('hidden');
 
-    if (!currentQuestions.length) throw new Error('생성된 문제가 없습니다.');
-    if (progress.current_index >= currentQuestions.length) {
-      renderDone();
-      return;
+    if (currentQuestions.length <= progress.current_index) {
+      throw new Error('현재 순서의 문제가 아직 생성되지 않았습니다.');
     }
+
     doneCard.classList.add('hidden');
     quizCard.classList.remove('hidden');
     renderQuestion();
   } catch (err) {
-    currentQuestions = [];
     hideStudyCards();
     loadingCard.classList.remove('hidden');
     loadingMessage.textContent = `문제 준비 실패: ${err.message}`;
@@ -232,7 +253,7 @@ function renderQuestion() {
   lastAnswerWasCorrect = false;
   markedUnsure = false;
   const q = currentQuestions[progress.current_index];
-  const total = currentQuestions.length;
+  const total = TOTAL_QUESTIONS;
   const current = progress.current_index + 1;
 
   stepLabel.textContent = q.step;
@@ -357,15 +378,31 @@ async function nextQuestion() {
   const nextIndex = progress.current_index + 1;
   progress.current_index = nextIndex;
 
-  await sb.from('study_progress').update({ current_index: nextIndex, updated_at: new Date().toISOString() }).eq('user_id', uid);
-  if (nextIndex >= currentQuestions.length) renderDone(); else renderQuestion();
+  await sb.from('study_progress').update({
+    current_index: nextIndex,
+    updated_at: new Date().toISOString()
+  }).eq('user_id', uid);
+
+  if (nextIndex >= TOTAL_QUESTIONS) {
+    renderDone();
+    return;
+  }
+
+  if (nextIndex < currentQuestions.length) {
+    renderQuestion();
+  } else {
+    await renderDay();
+  }
 }
 
 function renderDone() {
   loadingCard.classList.add('hidden');
   quizCard.classList.add('hidden');
   doneCard.classList.remove('hidden');
-  scoreSummary.textContent = `${currentQuestions.length}문제 중 ${progress.day_score}문제 정답`;
+  stepLabel.textContent = '완료';
+  progressText.textContent = `${TOTAL_QUESTIONS} / ${TOTAL_QUESTIONS}`;
+  progressBar.style.width = '100%';
+  scoreSummary.textContent = `${TOTAL_QUESTIONS}문제 중 ${progress.day_score}문제 정답`;
 
   if (!document.querySelector('#finishDayBtn')) {
     const btn = document.createElement('button');
