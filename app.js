@@ -20,9 +20,14 @@ const questionText = document.querySelector('#questionText');
 const choices = document.querySelector('#choices');
 const feedback = document.querySelector('#feedback');
 const nextBtn = document.querySelector('#nextBtn');
+const unsureBtn = document.querySelector('#unsureBtn');
 const quizCard = document.querySelector('#quizCard');
+const loadingCard = document.querySelector('#loadingCard');
+const loadingMessage = document.querySelector('#loadingMessage');
+const retryGenerateBtn = document.querySelector('#retryGenerateBtn');
 const doneCard = document.querySelector('#doneCard');
 const scoreSummary = document.querySelector('#scoreSummary');
+const modelBadge = document.querySelector('#modelBadge');
 
 const sourcesBtn = document.querySelector('#sourcesBtn');
 const backToStudyBtn = document.querySelector('#backToStudyBtn');
@@ -42,7 +47,10 @@ let session = null;
 let progress = null;
 let currentQuestions = [];
 let answered = false;
+let lastAnswerWasCorrect = false;
+let markedUnsure = false;
 let cachedSources = [];
+let currentGenerationMeta = null;
 
 function showAuth(msg='') {
   authView.classList.remove('hidden');
@@ -54,14 +62,22 @@ function showStudy() {
   studyView.classList.remove('hidden');
 }
 
+function hideStudyCards() {
+  quizCard.classList.add('hidden');
+  doneCard.classList.add('hidden');
+  loadingCard.classList.add('hidden');
+}
+
 function setMainMode(mode) {
-  const studyParts = [document.querySelector('.progress-wrap'), quizCard, doneCard];
+  const progressWrap = document.querySelector('.progress-wrap');
   if (mode === 'sources') {
-    studyParts.forEach(el => el.classList.add('hidden'));
+    progressWrap.classList.add('hidden');
+    hideStudyCards();
     sourcesView.classList.remove('hidden');
     loadSources();
   } else {
     sourcesView.classList.add('hidden');
+    progressWrap.classList.remove('hidden');
     renderDay();
   }
 }
@@ -112,7 +128,7 @@ async function ensureLegacyCivilLawSource() {
       updated_at: new Date().toISOString()
     });
   } catch (_) {
-    // 기존 자료 불러오기에 실패해도 학습 화면 자체는 계속 사용 가능하게 둔다.
+    // 기존 자료 불러오기 실패가 학습 화면을 막지는 않도록 한다.
   }
 }
 
@@ -121,44 +137,100 @@ async function loadProgress() {
   let { data, error } = await sb.from('study_progress').select('*').eq('user_id', uid).maybeSingle();
   if (error) throw error;
   if (!data) {
-    const inserted = await sb.from('study_progress').insert({ user_id: uid }).select().single();
+    const inserted = await sb.from('study_progress').insert({ user_id: uid, current_day: 1 }).select().single();
     if (inserted.error) throw inserted.error;
     data = inserted.data;
   }
   progress = data;
+  if (!progress.current_day || progress.current_day < 1) progress.current_day = 1;
+  if (progress.current_index == null) progress.current_index = 0;
+  if (progress.day_score == null) progress.day_score = 0;
   await ensureLegacyCivilLawSource();
-  renderDay();
+  await renderDay();
 }
 
-function getQuestionsForDay(day) {
-  return window.STUDY_QUESTION_BANK[day] || [];
+async function fetchDailyQuestions(dayNumber) {
+  const { data, error } = await sb.from('daily_questions')
+    .select('questions,model,prompt_version,generated_at')
+    .eq('user_id', session.user.id)
+    .eq('day_number', dayNumber)
+    .maybeSingle();
+  if (error) throw error;
+  if (data?.questions?.length) return data;
+  return null;
 }
 
-function renderDay() {
+async function generateDailyQuestions(dayNumber) {
+  loadingCard.classList.remove('hidden');
+  quizCard.classList.add('hidden');
+  doneCard.classList.add('hidden');
+  retryGenerateBtn.classList.add('hidden');
+  loadingMessage.textContent = 'GPT-5.6 Sol이 오답 기록과 민법 참고자료를 읽고 오늘 문제를 만들고 있습니다. 첫 생성은 조금 걸릴 수 있어요.';
+
+  const token = session?.access_token;
+  if (!token) throw new Error('로그인 세션이 없습니다. 다시 로그인해주세요.');
+
+  const r = await fetch('/api/generate-day', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ dayNumber }),
+  });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || `문제 생성 실패 (${r.status})`);
+  return data;
+}
+
+async function loadOrGenerateDay(dayNumber) {
+  const cached = await fetchDailyQuestions(dayNumber);
+  if (cached) return cached;
+  return generateDailyQuestions(dayNumber);
+}
+
+async function renderDay() {
   showStudy();
   sourcesView.classList.add('hidden');
   document.querySelector('.progress-wrap').classList.remove('hidden');
-  currentQuestions = getQuestionsForDay(progress.current_day);
   dayLabel.textContent = `Day ${progress.current_day}`;
+  stepLabel.textContent = '오늘 문제 준비';
+  progressText.textContent = '—';
+  progressBar.style.width = '0%';
+  modelBadge.textContent = 'GPT-5.6 Sol · High reasoning';
 
-  if (!currentQuestions.length) {
-    quizCard.classList.add('hidden');
-    doneCard.classList.remove('hidden');
-    scoreSummary.textContent = '아직 이 Day의 문제가 등록되지 않았습니다.';
-    return;
-  }
+  try {
+    hideStudyCards();
+    loadingCard.classList.remove('hidden');
+    loadingMessage.textContent = '오늘 문제를 불러오는 중...';
+    retryGenerateBtn.classList.add('hidden');
 
-  if (progress.current_index >= currentQuestions.length) {
-    renderDone();
-    return;
+    const payload = await loadOrGenerateDay(progress.current_day);
+    currentQuestions = payload.questions || [];
+    currentGenerationMeta = payload;
+    loadingCard.classList.add('hidden');
+
+    if (!currentQuestions.length) throw new Error('생성된 문제가 없습니다.');
+    if (progress.current_index >= currentQuestions.length) {
+      renderDone();
+      return;
+    }
+    doneCard.classList.add('hidden');
+    quizCard.classList.remove('hidden');
+    renderQuestion();
+  } catch (err) {
+    currentQuestions = [];
+    hideStudyCards();
+    loadingCard.classList.remove('hidden');
+    loadingMessage.textContent = `문제 준비 실패: ${err.message}`;
+    retryGenerateBtn.classList.remove('hidden');
   }
-  doneCard.classList.add('hidden');
-  quizCard.classList.remove('hidden');
-  renderQuestion();
 }
 
 function renderQuestion() {
   answered = false;
+  lastAnswerWasCorrect = false;
+  markedUnsure = false;
   const q = currentQuestions[progress.current_index];
   const total = currentQuestions.length;
   const current = progress.current_index + 1;
@@ -166,7 +238,7 @@ function renderQuestion() {
   stepLabel.textContent = q.step;
   progressText.textContent = `${current} / ${total}`;
   progressBar.style.width = `${(current / total) * 100}%`;
-  questionMeta.textContent = q.meta;
+  questionMeta.textContent = `${q.meta}${q.difficulty ? ` · ${q.difficulty}` : ''}`;
   questionText.textContent = q.question;
 
   if (q.passage) {
@@ -179,12 +251,71 @@ function renderQuestion() {
     const btn = document.createElement('button');
     btn.className = 'choice';
     btn.textContent = `${String.fromCharCode(65 + idx)}. ${label}`;
-    btn.addEventListener('click', () => answer(idx, btn));
+    btn.addEventListener('click', () => answer(idx));
     choices.appendChild(btn);
   });
   feedback.className = 'feedback hidden';
   feedback.innerHTML = '';
   nextBtn.classList.add('hidden');
+  unsureBtn.classList.add('hidden');
+  unsureBtn.disabled = false;
+  unsureBtn.textContent = '맞혔지만 헷갈림';
+}
+
+async function upsertReview(q, result) {
+  const uid = session.user.id;
+  const conceptKey = q.concept || `${q.step}:${q.meta || q.id}`;
+  const { data: existing } = await sb.from('review_items')
+    .select('*')
+    .eq('user_id', uid)
+    .eq('concept_key', conceptKey)
+    .maybeSingle();
+
+  let repetitions = existing?.repetitions || 0;
+  let ease = Number(existing?.ease || 2.5);
+  let intervalDays = Number(existing?.interval_days || 1);
+
+  if (result === 'correct') {
+    repetitions += 1;
+    const schedule = [1, 3, 7, 14, 30, 60, 90];
+    intervalDays = schedule[Math.min(repetitions - 1, schedule.length - 1)];
+    ease = Math.min(3.0, ease + 0.05);
+  } else if (result === 'unsure') {
+    repetitions = Math.max(0, repetitions - 1);
+    intervalDays = 1;
+    ease = Math.max(1.3, ease - 0.1);
+  } else {
+    repetitions = 0;
+    intervalDays = 1;
+    ease = Math.max(1.3, ease - 0.2);
+  }
+
+  const now = new Date();
+  const next = new Date(now.getTime() + intervalDays * 86400000);
+  await sb.from('review_items').upsert({
+    user_id: uid,
+    concept_key: conceptKey,
+    ease,
+    interval_days: intervalDays,
+    repetitions,
+    last_reviewed_at: now.toISOString(),
+    next_review_at: next.toISOString(),
+  }, { onConflict: 'user_id,concept_key' });
+}
+
+async function saveAnswerResult(q, result) {
+  const uid = session.user.id;
+  await sb.from('answer_log').upsert({
+    user_id: uid,
+    question_id: q.id,
+    day_number: progress.current_day,
+    step: q.step,
+    subject: q.step,
+    concept_key: q.concept || null,
+    result,
+    answered_at: new Date().toISOString()
+  }, { onConflict: 'user_id,question_id' });
+  await upsertReview(q, result);
 }
 
 async function answer(selectedIdx) {
@@ -192,6 +323,7 @@ async function answer(selectedIdx) {
   answered = true;
   const q = currentQuestions[progress.current_index];
   const correct = selectedIdx === q.answer;
+  lastAnswerWasCorrect = correct;
 
   [...choices.children].forEach((btn, idx) => {
     btn.disabled = true;
@@ -200,21 +332,23 @@ async function answer(selectedIdx) {
   });
 
   feedback.className = `feedback ${correct ? 'ok' : 'bad'}`;
-  feedback.innerHTML = `<strong>${correct ? '정답' : '오답'}</strong>${q.explanation}<br><span class="small">${q.vocab || ''}</span>`;
+  feedback.innerHTML = `<strong>${correct ? '정답' : '오답'}</strong>${escapeHtml(q.explanation).replace(/\n/g, '<br>')}${q.vocab ? `<br><span class="small">${escapeHtml(q.vocab)}</span>` : ''}`;
   nextBtn.classList.remove('hidden');
+  unsureBtn.classList.remove('hidden');
 
-  const uid = session.user.id;
-  await sb.from('answer_log').upsert({
-    user_id: uid,
-    question_id: q.id,
-    day_number: progress.current_day,
-    step: q.step,
-    result: correct ? 'correct' : 'wrong',
-    answered_at: new Date().toISOString()
-  }, { onConflict: 'user_id,question_id' });
+  await saveAnswerResult(q, correct ? 'correct' : 'wrong');
 
   if (correct) progress.day_score += 1;
-  await sb.from('study_progress').update({ day_score: progress.day_score, updated_at: new Date().toISOString() }).eq('user_id', uid);
+  await sb.from('study_progress').update({ day_score: progress.day_score, updated_at: new Date().toISOString() }).eq('user_id', session.user.id);
+}
+
+async function markUnsure() {
+  if (!answered || markedUnsure) return;
+  markedUnsure = true;
+  const q = currentQuestions[progress.current_index];
+  await saveAnswerResult(q, 'unsure');
+  unsureBtn.disabled = true;
+  unsureBtn.textContent = '헷갈림으로 저장됨';
 }
 
 async function nextQuestion() {
@@ -228,6 +362,7 @@ async function nextQuestion() {
 }
 
 function renderDone() {
+  loadingCard.classList.add('hidden');
   quizCard.classList.add('hidden');
   doneCard.classList.remove('hidden');
   scoreSummary.textContent = `${currentQuestions.length}문제 중 ${progress.day_score}문제 정답`;
@@ -236,7 +371,7 @@ function renderDone() {
     const btn = document.createElement('button');
     btn.id = 'finishDayBtn';
     btn.className = 'primary';
-    btn.textContent = '오늘 완료하고 다음 Day로';
+    btn.textContent = '오늘 완료하고 다음 Day 준비';
     btn.addEventListener('click', finishDay);
     doneCard.appendChild(btn);
   }
@@ -257,7 +392,7 @@ async function finishDay() {
   progress.day_score = 0;
   const btn = document.querySelector('#finishDayBtn');
   if (btn) btn.remove();
-  renderDay();
+  await renderDay();
 }
 
 function parseTags(raw) {
@@ -290,7 +425,7 @@ async function saveSource() {
   sourceTags.value = '';
   sourceText.value = '';
   sourceFile.value = '';
-  sourceMessage.textContent = '저장했습니다. 이 자료는 계정에 계속 남습니다.';
+  sourceMessage.textContent = '저장했습니다. 다음 새 Day 생성부터 출제 참고자료에 반영됩니다.';
   await loadSources();
 }
 
@@ -311,7 +446,7 @@ async function loadSources() {
 }
 
 function escapeHtml(v='') {
-  return v.replace(/[&<>'"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch]));
+  return String(v).replace(/[&<>'"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch]));
 }
 
 function renderSources() {
@@ -384,7 +519,10 @@ backToStudyBtn.addEventListener('click', () => setMainMode('study'));
 saveSourceBtn.addEventListener('click', saveSource);
 exportSourcesBtn.addEventListener('click', exportSources);
 nextBtn.addEventListener('click', nextQuestion);
+unsureBtn.addEventListener('click', markUnsure);
+retryGenerateBtn.addEventListener('click', renderDay);
 logoutBtn.addEventListener('click', async () => { await sb.auth.signOut(); showAuth(); });
+
 authForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   if (!sb) return showAuth('먼저 config.js에 Supabase 정보를 입력하세요.');
@@ -404,12 +542,14 @@ signupBtn.addEventListener('click', async () => {
 });
 
 (async function init() {
-  if (!sb) return showAuth('설정 전 상태입니다. README 순서대로 Supabase 연결을 먼저 해주세요.');
+  if (!sb) return showAuth('설정 전 상태입니다. config.js의 Supabase 연결 정보를 확인해주세요.');
   const { data } = await sb.auth.getSession();
   session = data.session;
   if (session) await loadProgress(); else showAuth();
   sb.auth.onAuthStateChange(async (_event, newSession) => {
+    const changed = newSession?.access_token !== session?.access_token;
     session = newSession;
-    if (session) await loadProgress(); else showAuth();
+    if (session && changed) await loadProgress();
+    if (!session) showAuth();
   });
 })();

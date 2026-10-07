@@ -33,6 +33,7 @@
         <div>
           <p class="eyebrow">TODAY</p>
           <h1 id="dayLabel">Day 1</h1>
+          <div id="modelBadge" class="model-badge">GPT-5.6 Sol · High reasoning</div>
         </div>
         <div class="top-actions">
           <button id="sourcesBtn" class="ghost">민법 자료</button>
@@ -42,26 +43,36 @@
 
       <div class="progress-wrap">
         <div class="progress-row">
-          <span id="stepLabel">TOEIC Part 6</span>
-          <span id="progressText">1 / 6</span>
+          <span id="stepLabel">오늘 문제 준비</span>
+          <span id="progressText">—</span>
         </div>
         <div class="progress-track"><div id="progressBar" class="progress-bar"></div></div>
       </div>
 
-      <section id="quizCard" class="card quiz-card">
+      <section id="loadingCard" class="card status-card hidden">
+        <p class="eyebrow">PREPARING</p>
+        <h2>오늘 문제 준비 중</h2>
+        <p id="loadingMessage" class="muted">오늘 문제를 불러오는 중...</p>
+        <button id="retryGenerateBtn" class="primary hidden" type="button">다시 시도</button>
+      </section>
+
+      <section id="quizCard" class="card quiz-card hidden">
         <div id="questionMeta" class="meta"></div>
         <div id="passage" class="passage hidden"></div>
         <h2 id="questionText"></h2>
         <div id="choices" class="choices"></div>
         <div id="feedback" class="feedback hidden"></div>
-        <button id="nextBtn" class="primary hidden">다음</button>
+        <div class="answer-actions">
+          <button id="unsureBtn" class="ghost hidden" type="button">맞혔지만 헷갈림</button>
+          <button id="nextBtn" class="primary hidden" type="button">다음</button>
+        </div>
       </section>
 
       <section id="doneCard" class="card done-card hidden">
         <p class="eyebrow">COMPLETE</p>
         <h2>오늘 공부 완료</h2>
         <p id="scoreSummary" class="muted"></p>
-        <p class="small">다음 접속 때 Day가 1 증가합니다.</p>
+        <p class="small">이 Day를 완료해야 다음 Day가 새로 생성됩니다. 쉬는 날은 Day가 증가하지 않습니다.</p>
       </section>
 
       <section id="sourcesView" class="hidden">
@@ -69,7 +80,7 @@
           <div>
             <p class="eyebrow">REFERENCE LIBRARY</p>
             <h2>민법 참고자료</h2>
-            <p class="muted">헷갈린 내용, 판례 메모, 오답 정리를 계속 추가해두세요. PC/폰에서 동기화됩니다.</p>
+            <p class="muted">헷갈린 내용, 판례 메모, 오답 정리를 계속 추가하세요. 다음 새 Day의 민법 문제 생성부터 반영됩니다.</p>
           </div>
           <button id="backToStudyBtn" class="ghost">공부로 돌아가기</button>
         </div>
@@ -107,7 +118,6 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="./config.js"></script>
-  <script src="./questions.js"></script>
   <script src="./app.js"></script>
 </body>
 </html>
