@@ -6,6 +6,8 @@ const authView = document.querySelector('#authView');
 const studyView = document.querySelector('#studyView');
 const authForm = document.querySelector('#authForm');
 const emailInput = document.querySelector('#email');
+const passwordInput = document.querySelector('#password');
+const signupBtn = document.querySelector('#signupBtn');
 const authMessage = document.querySelector('#authMessage');
 const logoutBtn = document.querySelector('#logoutBtn');
 const dayLabel = document.querySelector('#dayLabel');
@@ -62,11 +64,22 @@ function setMainMode(mode) {
   }
 }
 
-async function signIn(email) {
-  const redirectTo = window.location.origin + window.location.pathname;
-  const { error } = await sb.auth.signInWithOtp({ email, options: { emailRedirectTo: redirectTo } });
+async function signIn(email, password) {
+  const { data, error } = await sb.auth.signInWithPassword({ email, password });
   if (error) throw error;
-  showAuth('이메일로 로그인 링크를 보냈습니다.');
+  session = data.session;
+  if (session) await loadProgress();
+}
+
+async function signUp(email, password) {
+  const { data, error } = await sb.auth.signUp({ email, password });
+  if (error) throw error;
+  session = data.session;
+  if (session) {
+    await loadProgress();
+  } else {
+    showAuth('계정은 만들어졌습니다. 이메일 확인이 켜져 있다면 메일 인증 후 로그인하세요.');
+  }
 }
 
 async function loadProgress() {
@@ -340,8 +353,19 @@ logoutBtn.addEventListener('click', async () => { await sb.auth.signOut(); showA
 authForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   if (!sb) return showAuth('먼저 config.js에 Supabase 정보를 입력하세요.');
-  try { await signIn(emailInput.value.trim()); }
-  catch (err) { showAuth(err.message); }
+  const email = emailInput.value.trim();
+  const password = passwordInput.value;
+  try { await signIn(email, password); }
+  catch (err) { showAuth('로그인 실패: ' + err.message); }
+});
+
+signupBtn.addEventListener('click', async () => {
+  if (!sb) return showAuth('먼저 config.js에 Supabase 정보를 입력하세요.');
+  const email = emailInput.value.trim();
+  const password = passwordInput.value;
+  if (!email || password.length < 8) return showAuth('이메일과 8자 이상의 비밀번호를 입력하세요.');
+  try { await signUp(email, password); }
+  catch (err) { showAuth('가입 실패: ' + err.message); }
 });
 
 (async function init() {
