@@ -36,6 +36,8 @@ const sourceMessage = document.querySelector('#sourceMessage');
 const sourceList = document.querySelector('#sourceList');
 const exportSourcesBtn = document.querySelector('#exportSourcesBtn');
 
+const LEGACY_SOURCE_TITLE = '기존 민법 참고자료 (이전 메모)';
+
 let session = null;
 let progress = null;
 let currentQuestions = [];
@@ -82,6 +84,38 @@ async function signUp(email, password) {
   }
 }
 
+async function ensureLegacyCivilLawSource() {
+  if (!session?.user?.id) return;
+  const uid = session.user.id;
+
+  const existing = await sb.from('study_sources')
+    .select('id')
+    .eq('user_id', uid)
+    .eq('subject', '민법')
+    .eq('title', LEGACY_SOURCE_TITLE)
+    .limit(1);
+
+  if (existing.error || (existing.data && existing.data.length)) return;
+
+  try {
+    const res = await fetch('./민법_기존_참고자료.txt', { cache: 'no-store' });
+    if (!res.ok) return;
+    const text = await res.text();
+    if (!text.trim()) return;
+
+    await sb.from('study_sources').insert({
+      user_id: uid,
+      subject: '민법',
+      title: LEGACY_SOURCE_TITLE,
+      tags: ['기존자료', '오답', '판례', '민법'],
+      source_text: text,
+      updated_at: new Date().toISOString()
+    });
+  } catch (_) {
+    // 기존 자료 불러오기에 실패해도 학습 화면 자체는 계속 사용 가능하게 둔다.
+  }
+}
+
 async function loadProgress() {
   const uid = session.user.id;
   let { data, error } = await sb.from('study_progress').select('*').eq('user_id', uid).maybeSingle();
@@ -92,6 +126,7 @@ async function loadProgress() {
     data = inserted.data;
   }
   progress = data;
+  await ensureLegacyCivilLawSource();
   renderDay();
 }
 
