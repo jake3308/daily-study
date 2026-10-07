@@ -1,5 +1,5 @@
 const OPENAI_MODEL = 'gpt-5.6-sol';
-const PROMPT_VERSION = 'v9-lazy-stage-generation';
+const PROMPT_VERSION = 'v9.3-toeic-passage-groups';
 const CURRENT_STAGES = [
   { step: 'TOEIC Part 6', count: 4 },
   { step: 'TOEIC Part 7', count: 2 },
@@ -22,6 +22,7 @@ const STAGES = ACTIVE_TRACK === 'patent_focus' ? PATENT_STAGES : CURRENT_STAGES;
 const TOTAL = STAGES.reduce((n, s) => n + s.count, 0);
 const LETTER_TO_INDEX = { A: 0, B: 1, C: 2, D: 3, E: 4 };
 const MAX_SOURCE_CHARS = 6000;
+const OPENAI_TIMEOUT_MS = 90000;
 
 function send(res, status, body) {
   res.status(status).setHeader('Content-Type', 'application/json; charset=utf-8');
@@ -66,29 +67,44 @@ function outputText(resp) {
 }
 
 async function responseJson({ instructions, input, schema, name, effort, maxOutputTokens }) {
-  const r = await fetch('https://api.openai.com/v1/responses', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: OPENAI_MODEL,
-      reasoning: { effort },
-      store: false,
-      max_output_tokens: maxOutputTokens,
-      instructions,
-      input,
-      text: {
-        format: {
-          type: 'json_schema',
-          name,
-          strict: true,
-          schema,
-        },
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), OPENAI_TIMEOUT_MS);
+  const started = Date.now();
+  let r;
+  try {
+    r = await fetch('https://api.openai.com/v1/responses', {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        'Content-Type': 'application/json',
       },
-    }),
-  });
+      body: JSON.stringify({
+        model: OPENAI_MODEL,
+        reasoning: { effort },
+        store: false,
+        max_output_tokens: maxOutputTokens,
+        instructions,
+        input,
+        text: {
+          format: {
+            type: 'json_schema',
+            name,
+            strict: true,
+            schema,
+          },
+        },
+      }),
+    });
+  } catch (err) {
+    if (err?.name === 'AbortError') {
+      throw new Error(`OpenAI 생성이 90초를 넘겨 중단했습니다. 같은 요청이 10분씩 멈춰 있지 않도록 제한했습니다.`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeout);
+    console.log(`[${name}] OpenAI elapsed=${Date.now() - started}ms effort=${effort} max=${maxOutputTokens}`);
+  }
 
   const data = await r.json();
   if (!r.ok) throw new Error(data?.error?.message || `OpenAI API ${r.status}`);
@@ -258,19 +274,22 @@ function englishWordCount(s) {
 
 async function generateToeicPart6(day, recent, offset) {
   const data = await responseJson({
-    effort: 'medium',
-    maxOutputTokens: 3600,
+    effort: 'low',
+    maxOutputTokens: 3000,
     name: 'toeic_part6',
     schema: toeicSetSchema(4),
     instructions: `
 실제 TOEIC Reading Part 6 출제자처럼 작성한다.
 난도는 800~900점대 실전 수준이며 쉬운 교재형 문제는 금지한다.
-하나의 자연스러운 업무 문서에 [1] [2] [3] [4] 네 빈칸을 만들고 4문항을 낸다.
+반드시 '지문 1개 + 그 지문에 딸린 4문항' 구조로 만든다.
+문항마다 별도 지문을 만들지 않는다.
+하나의 자연스러운 업무 문서 안에 [1] [2] [3] [4] 네 빈칸을 만들고,
+questions[0]은 [1], questions[1]은 [2], questions[2]는 [3], questions[3]은 [4]를 묻는다.
 지문은 140~240 English words 정도.
 문항 유형은 어휘·연어, 문맥/응집성, 문법, 문장 연결을 섞되 단순 품사형은 최대 1개.
 선택지는 모두 실제 오답으로 기능할 정도로 그럴듯하게 만든다.
 answer_letter는 A/B/C/D 중 하나.
-해설은 정답 근거를 분명히 하되 장황하지 않게 2~5문장.
+해설은 정답 근거를 정확히 1~3문장으로 설명하고 핵심 표현만 vocab에 적는다.
 `,
     input: `Day ${day} Part 6을 생성하라.\n최근 영어 정오답:\n${summarizeAnswers(recent, 'TOEIC Part 6')}`,
   });
@@ -282,17 +301,20 @@ answer_letter는 A/B/C/D 중 하나.
 
 async function generateToeicPart7(day, recent, offset) {
   const data = await responseJson({
-    effort: 'medium',
-    maxOutputTokens: 3000,
+    effort: 'low',
+    maxOutputTokens: 2600,
     name: 'toeic_part7',
     schema: toeicSetSchema(2),
     instructions: `
 실제 TOEIC Reading Part 7 출제자처럼 작성한다.
 난도는 800~900점대 실전 수준.
+반드시 '지문 1개 + 그 지문에 딸린 2문항' 구조로 만든다.
+문항마다 별도 지문을 만들지 않는다.
 하나의 이메일/공지/기사/메모/웹페이지 등 실제 시험에 나올 법한 지문을 190~330 English words로 작성한다.
+두 questions 모두 같은 passage만을 근거로 답하게 한다.
 2문항 모두 한 문장 복사로 끝나지 않게 하고, 최소 1문항은 추론·목적·의도·paraphrase·복수정보 결합을 요구한다.
 answer_letter는 A/B/C/D 중 하나.
-해설은 정답 근거와 핵심 paraphrase를 짧고 정확하게 설명한다.
+해설은 정답 근거와 핵심 paraphrase를 1~3문장으로 짧고 정확하게 설명한다.
 `,
     input: `Day ${day} Part 7을 생성하라.\n최근 영어 정오답:\n${summarizeAnswers(recent, 'TOEIC Part 7')}`,
   });
@@ -315,6 +337,7 @@ async function generateLaw(step, day, sources, recent, review, offset) {
 선지 5개가 모두 판례형 완성명제여야 하고, 쉬운 낚시 선지는 금지한다.
 원칙·예외, 성립요건·대항요건, 당사자효·제3자효, 소멸·행사제한, 추정·입증책임 같은 경계선을 적극 활용한다.
 사용자 메모는 약점 참고용일 뿐이며 틀린 메모를 정답으로 받아들이지 않는다.
+난도 조건은 생성 지침일 뿐이며, 생성 후 문장 길이·복잡도만으로 문제를 폐기하지 않는다.
 확신 없는 판례번호는 쓰지 않는다.
 해설은 A~E 각 선지를 각각 검토하되 필요한 핵심만 쓴다.
 answer_letter는 A/B/C/D/E 중 하나.
@@ -366,6 +389,7 @@ async function generateScience(step, day, recent, review, offset) {
 사용자는 고등학교 ${step} 기본 수준은 이미 충분히 숙달했던 학습자다.
 ${focus}
 5지선다, 정답 하나. 보기들은 모두 같은 수준의 그럴듯한 오답이어야 한다.
+난도 조건은 생성 지침일 뿐이며, 생성 후 길이·복잡도만으로 문제를 폐기하지 않는다.
 해설은 풀이에 필요한 대학 수준 개념을 복구할 수 있게 설명하고 각 보기의 핵심 오류도 짚는다.
 answer_letter는 A/B/C/D/E 중 하나.
 `,
@@ -507,6 +531,6 @@ module.exports = async (req, res) => {
     });
   } catch (err) {
     console.error(err);
-    return send(res, 500, { error: err?.message || '문제 생성 중 오류가 발생했습니다.' });
+    return send(res, 500, { error: err?.message || '문제 생성 중 오류가 발생했습니다.', prompt_version: PROMPT_VERSION });
   }
 };

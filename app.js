@@ -167,6 +167,39 @@ const INDEX_STAGE = [
   '민법','물리','화학','생물'
 ];
 
+const GROUPS = [
+  { step: 'TOEIC Part 6', start: 0, end: 4, label: 'Part 6' },
+  { step: 'TOEIC Part 7', start: 4, end: 6, label: 'Part 7' },
+  { step: '민법', start: 6, end: 7, label: '민법' },
+  { step: '물리', start: 7, end: 8, label: '물리' },
+  { step: '화학', start: 8, end: 9, label: '화학' },
+  { step: '생물', start: 9, end: 10, label: '생물' },
+];
+
+function groupForIndex(index) {
+  return GROUPS.find(g => index >= g.start && index < g.end) || GROUPS[GROUPS.length - 1];
+}
+
+function groupPosition(index) {
+  const g = groupForIndex(index);
+  return {
+    ...g,
+    number: index - g.start + 1,
+    total: g.end - g.start,
+    isLast: index === g.end - 1,
+  };
+}
+
+function nextSectionLabel(index) {
+  if (index === 3) return 'Part 7 지문으로';
+  if (index === 5) return '민법으로';
+  if (index === 6) return '물리로';
+  if (index === 7) return '화학으로';
+  if (index === 8) return '생물로';
+  if (index === 9) return '오늘 완료';
+  return '다음 문제';
+}
+
 function pendingStageName() {
   return INDEX_STAGE[Math.min(progress?.current_index || 0, INDEX_STAGE.length - 1)] || '다음 문제';
 }
@@ -178,7 +211,13 @@ async function generateNextBlock(dayNumber) {
   retryGenerateBtn.classList.add('hidden');
 
   const stage = pendingStageName();
-  loadingMessage.textContent = `${stage} 문제를 준비 중입니다…`;
+  if (stage === 'TOEIC Part 6') {
+    loadingMessage.textContent = 'Part 6 지문 1개와 연결된 4문제를 준비 중입니다…';
+  } else if (stage === 'TOEIC Part 7') {
+    loadingMessage.textContent = 'Part 7 지문 1개와 연결된 2문제를 준비 중입니다…';
+  } else {
+    loadingMessage.textContent = `${stage} 문제를 준비 중입니다…`;
+  }
 
   const token = session?.access_token;
   if (!token) throw new Error('로그인 세션이 없습니다. 다시 로그인해주세요.');
@@ -193,7 +232,10 @@ async function generateNextBlock(dayNumber) {
   });
 
   const data = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(data.error || `문제 생성 실패 (${r.status})`);
+  if (!r.ok) {
+    const version = data.prompt_version ? ` [${data.prompt_version}]` : '';
+    throw new Error(`${data.error || `문제 생성 실패 (${r.status})`}${version}`);
+  }
   return data;
 }
 
@@ -206,14 +248,55 @@ async function loadOrGenerateForCurrentIndex(dayNumber) {
   return generateNextBlock(dayNumber);
 }
 
+let prefetchInFlight = false;
+let lastPrefetchQuestionCount = -1;
+
+async function prefetchNextBlock() {
+  if (prefetchInFlight || !session?.access_token || !progress) return;
+  if (!Array.isArray(currentQuestions) || currentQuestions.length >= TOTAL_QUESTIONS) return;
+
+  // 같은 저장 상태에서 중복 호출 방지.
+  if (lastPrefetchQuestionCount === currentQuestions.length) return;
+  lastPrefetchQuestionCount = currentQuestions.length;
+  prefetchInFlight = true;
+
+  try {
+    const r = await fetch('/api/generate-day', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({ dayNumber: progress.current_day }),
+    });
+
+    if (!r.ok) return;
+    const data = await r.json().catch(() => ({}));
+    if (Array.isArray(data.questions) && data.questions.length > currentQuestions.length) {
+      currentQuestions = data.questions;
+      currentGenerationMeta = data;
+    }
+  } catch (_) {
+    // 선행 생성 실패는 학습 화면을 막지 않는다.
+  } finally {
+    prefetchInFlight = false;
+  }
+}
+
 async function renderDay() {
   showStudy();
   sourcesView.classList.add('hidden');
   document.querySelector('.progress-wrap').classList.remove('hidden');
   dayLabel.textContent = `Day ${progress.current_day}`;
   stepLabel.textContent = progress.current_index >= TOTAL_QUESTIONS ? '완료' : pendingStageName();
-  progressText.textContent = `${Math.min(progress.current_index + 1, TOTAL_QUESTIONS)} / ${TOTAL_QUESTIONS}`;
-  progressBar.style.width = `${Math.min(progress.current_index, TOTAL_QUESTIONS) / TOTAL_QUESTIONS * 100}%`;
+  if (progress.current_index < TOTAL_QUESTIONS) {
+    const gp = groupPosition(progress.current_index);
+    progressText.textContent = `${gp.number} / ${gp.total}`;
+    progressBar.style.width = `${(gp.number / gp.total) * 100}%`;
+  } else {
+    progressText.textContent = `${TOTAL_QUESTIONS} / ${TOTAL_QUESTIONS}`;
+    progressBar.style.width = '100%';
+  }
   modelBadge.textContent = 'Sol';
 
   if (progress.current_index >= TOTAL_QUESTIONS) {
@@ -240,6 +323,9 @@ async function renderDay() {
     doneCard.classList.add('hidden');
     quizCard.classList.remove('hidden');
     renderQuestion();
+
+    // 사용자가 현재 묶음을 푸는 동안 다음 묶음을 미리 만든다.
+    setTimeout(() => prefetchNextBlock(), 800);
   } catch (err) {
     hideStudyCards();
     loadingCard.classList.remove('hidden');
@@ -255,11 +341,19 @@ function renderQuestion() {
   const q = currentQuestions[progress.current_index];
   const total = TOTAL_QUESTIONS;
   const current = progress.current_index + 1;
+  const gp = groupPosition(progress.current_index);
 
   stepLabel.textContent = q.step;
-  progressText.textContent = `${current} / ${total}`;
-  progressBar.style.width = `${(current / total) * 100}%`;
-  questionMeta.textContent = `${q.meta}${q.difficulty ? ` · ${q.difficulty}` : ''}`;
+  progressText.textContent = `${gp.number} / ${gp.total}`;
+  progressBar.style.width = `${(gp.number / gp.total) * 100}%`;
+
+  const metaBits = [
+    `오늘 ${current}/${total}`,
+    `${gp.label} ${gp.number}/${gp.total}`,
+    q.difficulty || '',
+    q.meta || ''
+  ].filter(Boolean);
+  questionMeta.textContent = metaBits.join(' · ');
   questionText.textContent = q.question;
 
   if (q.passage) {
@@ -278,6 +372,7 @@ function renderQuestion() {
   feedback.className = 'feedback hidden';
   feedback.innerHTML = '';
   nextBtn.classList.add('hidden');
+  nextBtn.textContent = nextSectionLabel(progress.current_index);
   unsureBtn.classList.add('hidden');
   unsureBtn.disabled = false;
   unsureBtn.textContent = '맞혔지만 헷갈림';
@@ -390,6 +485,7 @@ async function nextQuestion() {
 
   if (nextIndex < currentQuestions.length) {
     renderQuestion();
+    setTimeout(() => prefetchNextBlock(), 800);
   } else {
     await renderDay();
   }
